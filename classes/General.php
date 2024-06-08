@@ -93,10 +93,10 @@ class General {
         }
     }
 
-    public function selectOne(int $id): ?array {
+    public function selectOne(int $id, string $target_field): ?array {
         try {
             $conn = $this->db->getConnection();
-            $stmt = $conn->prepare("SELECT * FROM $this->table WHERE id = ?");
+            $stmt = $conn->prepare("SELECT * FROM $this->table WHERE $target_field = ?");
             if (!$stmt) {
                 throw new Exception('Failed to prepare statement: ' . $conn->error);
             }
