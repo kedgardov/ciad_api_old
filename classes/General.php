@@ -59,32 +59,42 @@ class General {
         }
     }
 
-    public function update(int $id, array $data): bool {
+    public function update(int $id, string $field, $data, string $target_field = 'id'): bool {
         try {
-            $data = $this->sanitizeData($data);
-            $fields = [];
-            $types = "";
-            $values = [];
+            // Sanitize the inputs
+            $data = htmlspecialchars($data, ENT_QUOTES, 'UTF-8');
+            $field = htmlspecialchars($field, ENT_QUOTES, 'UTF-8');
+            $target_field = htmlspecialchars($target_field, ENT_QUOTES, 'UTF-8');
 
-            foreach ($data as $key => $value) {
-                $fields[] = "$key = ?";
-                $types .= $this->getType($value);
-                $values[] = $value;
-            }
-            $values[] = $id;
-            $types .= "i";
+            // Get the type for the data and id
+            $dataType = $this->getType($data);
+            $idType = $this->getType($id);
 
+            // Connect to the database
             $conn = $this->db->getConnection();
-            $sql = "UPDATE $this->table SET " . implode(", ", $fields) . " WHERE id = ?";
+            $sql = "UPDATE $this->table SET $field = ? WHERE $target_field = ?";
+
+            // Log the query and values for debugging
+            error_log("SQL: $sql");
+            error_log("Types: $dataType$idType");
+            error_log("Values: $data, $id");
+
+            // Prepare the statement
             $stmt = $conn->prepare($sql);
             if (!$stmt) {
                 throw new Exception('Failed to prepare statement: ' . $conn->error);
             }
-            $stmt->bind_param($types, ...$values);
+
+            // Bind the parameters
+            $stmt->bind_param($dataType . $idType, $data, $id);
+
+            // Execute the statement
             $result = $stmt->execute();
             if (!$result) {
                 throw new Exception('Database error: ' . $stmt->error);
             }
+
+            // Close the statement
             $stmt->close();
             return $result;
         } catch (Exception $e) {
@@ -92,6 +102,7 @@ class General {
             return false;
         }
     }
+
 
     public function selectOne(int $id, string $target_field): ?array {
         try {
