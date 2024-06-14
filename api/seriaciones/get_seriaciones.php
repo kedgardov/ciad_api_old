@@ -9,7 +9,7 @@ header('Access-Control-Allow-Headers: Content-Type, Authorization');
 header('Content-Type: application/json');
 
 require_once '../../classes/Database.php';
-require_once '../../classes/Curso.php';
+require_once '../../classes/Seriacion.php';
 
 // Enable error reporting
 error_reporting(E_ALL);
@@ -21,17 +21,25 @@ $config = include '../../config/db_config.php';
 try {
     // Create a new Database instance
     $db = new Database($config['servername'], $config['username'], $config['password'], $config['dbname']);
-    // Create a new Curso instance
-    $curso = new Curso($db);
 
-    // Retrieve all courses
-    $courses = $curso->selectAll();
+    // Create a new Seriacion instance
+    $seriacion = new Seriacion($db);
+
+    // Get course ID from query parameters
+    $courseId = isset($_GET['id_curso']) ? intval($_GET['id_curso']) : 0;
+    if ($courseId <= 0) {
+        throw new Exception('Invalid course ID');
+    }
+
+    // Retrieve all seriaciones for the course
+    $seriaciones = $seriacion->selectAllWhereId("id_curso",$courseId);
 
     // Return the data as JSON
-    echo json_encode(['cursos' => $courses]);
+    echo json_encode(['seriaciones' => $seriaciones]);
 } catch (Exception $e) {
     // Handle any exceptions and return an error response
     http_response_code(500);
     echo json_encode(['error' => 'An error occurred while processing your request.']);
     error_log($e->getMessage());
 }
+?>

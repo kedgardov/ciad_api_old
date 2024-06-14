@@ -58,6 +58,62 @@ class General {
             return false;
         }
     }
+    public function deleteById(string $idField,int $id): bool {
+        try {
+            $sql = "DELETE FROM $this->table WHERE $idField = ?";
+            $conn = $this->db->getConnection();
+            $stmt = $conn->prepare($sql);
+            if (!$stmt) {
+                throw new Exception('Failed to prepare statement: ' . $conn->error);
+            }
+            $stmt->bind_param('i', $id);
+            $result = $stmt->execute();
+            if (!$result) {
+                throw new Exception('Database error: ' . $stmt->error);
+            }
+            $stmt->close();
+            return $result;
+        } catch (Exception $e) {
+            error_log($e->getMessage());
+            return false;
+        }
+    }
+
+    public function updateByField(int $id, string $field, $data, string $targetField): bool {
+        try {
+            $data = htmlspecialchars($data, ENT_QUOTES, 'UTF-8');
+            $field = htmlspecialchars($field, ENT_QUOTES, 'UTF-8');
+            $targetField = htmlspecialchars($targetField, ENT_QUOTES, 'UTF-8');
+
+            $dataType = $this->getType($data);
+            $idType = $this->getType($id);
+
+            $conn = $this->db->getConnection();
+            $sql = "UPDATE $this->table SET $field = ? WHERE $targetField = ?";
+
+            error_log("SQL: $sql");
+            error_log("Types: $dataType$idType");
+            error_log("Values: $data, $id");
+
+            $stmt = $conn->prepare($sql);
+            if (!$stmt) {
+                throw new Exception('Failed to prepare statement: ' . $conn->error);
+            }
+
+            $stmt->bind_param($dataType . $idType, $data, $id);
+            $result = $stmt->execute();
+            if (!$result) {
+                throw new Exception('Database error: ' . $stmt->error);
+            }
+
+            $stmt->close();
+            return $result;
+        } catch (Exception $e) {
+            error_log($e->getMessage());
+            return false;
+        }
+    }
+
 
     public function update(int $id, string $field, $data, string $target_field = 'id'): bool {
         try {
@@ -123,6 +179,39 @@ class General {
         }
     }
 
+    public function deleteWithCondition(array $conditions): bool {
+        try {
+            $conditionStrings = [];
+            $values = [];
+            $types = '';
+            foreach ($conditions as $field => $value) {
+                $conditionStrings[] = "$field = ?";
+                $values[] = $value;
+                $types .= $this->getType($value);
+            }
+            $conditionString = implode(' AND ', $conditionStrings);
+
+            $sql = "DELETE FROM $this->table WHERE $conditionString";
+            $conn = $this->db->getConnection();
+            $stmt = $conn->prepare($sql);
+            if (!$stmt) {
+                throw new Exception('Failed to prepare statement: ' . $conn->error);
+            }
+            $stmt->bind_param($types, ...$values);
+            $result = $stmt->execute();
+            if (!$result) {
+                throw new Exception('Database error: ' . $stmt->error);
+            }
+            $stmt->close();
+            return $result;
+        } catch (Exception $e) {
+            error_log($e->getMessage());
+            return false;
+        }
+    }
+
+
+
     public function selectAll(): array {
         try {
             $conn = $this->db->getConnection();
@@ -135,6 +224,26 @@ class General {
             return [];
         }
     }
+
+    public function selectAllWhereId(string $field, int $value): array {
+    try {
+        $conn = $this->db->getConnection();
+        $stmt = $conn->prepare("SELECT * FROM $this->table WHERE $field = ?");
+        if (!$stmt) {
+            throw new Exception('Failed to prepare statement: ' . $conn->error);
+        }
+        $stmt->bind_param('i', $value);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $records = $result->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+        return $records;
+    } catch (Exception $e) {
+        error_log($e->getMessage());
+        return [];
+    }
+}
+
 
     private function getParamTypes(array $data): string {
         $types = '';
