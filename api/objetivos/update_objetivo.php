@@ -1,9 +1,10 @@
 <?php
-
 // Enable CORS
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+header('Access-Control-Allow-Origin: '. getenv('ORIGIN_PATH'));
+header('Access-Control-Allow-Methods: POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
+header('Access-Control-Allow-Credentials: true');
+header('Content-Type: application/json');
 
 // Handle preflight requests
 if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
@@ -11,55 +12,79 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
     exit();
 }
 
-// Set content type to JSON
-header('Content-Type: application/json');
-
+// Include necessary files
 require_once '../../classes/Database.php';
-require_once '../../classes/Objetivo.php';
-
-// Enable error reporting
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
-
-// Load database configuration
+require_once '../../utilities/check_permissions.php';
 $config = include '../../config/db_config.php';
 
-try {
-    // Create a new Database instance
-    $db = new Database($config['servername'], $config['username'], $config['password'], $config['dbname']);
-    $conn = $db->getConnection();
-    if (!$conn) {
-        throw new Exception('Failed to connect to the database');
-    }
+session_start();
 
-    // Get the input data
+try {
+    // Decode input data
     $input = json_decode(file_get_contents('php://input'), true);
 
-    // Validate the input data
-    if (!isset($input['id_objetivo']) || !isset($input['objetivo'])) {
-        throw new Exception('Invalid input data');
+    // Get parameters
+    $id_curso = isset($input['id_curso']) ? filter_var($input['id_curso'], FILTER_VALIDATE_INT) : null;
+    $objetivoList = isset($input['objetivos']) ? $input['objetivos'] : [];
+
+    // Validate parameters
+    if ($id_curso === false || empty($objetivoList)) {
+        throw new Exception('Invalid input parameters');
     }
 
-    $id_objetivo = intval($input['id_objetivo']);
-    $objetivo = htmlspecialchars($input['objetivo'], ENT_QUOTES, 'UTF-8');
+    if (isset($_SESSION['username'])) {
+        $username = $_SESSION['username'];
 
-    // Create a new Objetivo instance
-    $objetivoInstance = new Objetivo($db);
+        $db = new Database($config['servername'], $config['username'], $config['password'], $config['dbname']);
+        $conn = $db->getConnection();
 
-    // Update the objetivo
-    $result = $objetivoInstance->updateById($id_objetivo, 'objetivo', $objetivo);
+        if (userHasPermissionsInCurso($username, $id_curso, $conn)) {
+            $conn->begin_transaction();
 
-    if (!$result) {
-        throw new Exception('Failed to update the objetivo');
+            $sql = "UPDATE objetivos SET numero = ?, tipo = ?, objetivo = ? WHERE id_objetivo = ? AND id_curso = ?";
+            $stmt = $conn->prepare($sql);
+            if (!$stmt) {
+                throw new Exception('Failed to prepare statement: ' . $conn->error);
+            }
+
+            foreach ($objetivoList as $objetivo) {
+                $id_objetivo = isset($objetivo['id_objetivo']) ? filter_var($objetivo['id_objetivo'], FILTER_VALIDATE_INT) : null;
+                $numero = isset($objetivo['numero']) ? filter_var($objetivo['numero'], FILTER_VALIDATE_INT) : null;
+                $tipo = isset($objetivo['tipo']) ? $objetivo['tipo'] : null;
+                $objetivo_text = isset($objetivo['objetivo']) ? $objetivo['objetivo'] : null;
+
+                if ($id_objetivo === false || $numero === false || !$tipo || !$objetivo_text) {
+                    throw new Exception('Invalid objetivo item parameters');
+                }
+
+                $stmt->bind_param('issii', $numero, $tipo, $objetivo_text, $id_objetivo, $id_curso);
+                $stmt->execute();
+
+                if ($stmt->error) {
+                    throw new Exception('Failed: ' . $stmt->error);
+                }
+            }
+
+            $conn->commit();
+
+            $response = [
+                'success' => true
+            ];
+
+            echo json_encode($response);
+        } else {
+            throw new Exception('User is not allowed to update these objetivos');
+        }
+    } else {
+        // Return unauthorized response if session username is not set
+        http_response_code(401);
+        echo json_encode(['error' => 'Unauthorized']);
     }
-
-    // Return a success response
-    echo json_encode(['success' => true]);
 } catch (Exception $e) {
     // Handle any exceptions and return an error response
+    if (isset($conn) && $conn->in_transaction) {
+        $conn->rollback();
+    }
     http_response_code(500);
-    echo json_encode(['error' => 'An error occurred while processing your request.']);
-    error_log($e->getMessage());
+    echo json_encode(['error' => 'An error occurred: ' . $e->getMessage()]);
 }
-?>

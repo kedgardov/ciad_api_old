@@ -1,0 +1,7 @@
+# .htaccess
+
+SetEnv DB_SERVERNAME "localhost"
+SetEnv DB_USERNAME "root"
+SetEnv DB_PASSWORD "Meta1101!!!"
+SetEnv DB_NAME "ciad_test"
+SetEnv ORIGIN_PATH "http://localhost:3000"

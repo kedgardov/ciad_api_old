@@ -1,8 +1,8 @@
 <?php
 return [
-    'servername' => 'localhost',
-    'username' => 'root',
-    'password' => 'Meta1101!!!',
-    'dbname' => 'ciad_test',
+    'servername' => getenv('DB_SERVERNAME'),
+    'username' => getenv('DB_USERNAME'),
+    'password' => getenv('DB_PASSWORD'),
+    'dbname' => getenv('DB_NAME'),
 ];
 ?>

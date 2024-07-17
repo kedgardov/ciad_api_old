@@ -1,48 +1,83 @@
 <?php
 
 // Enable CORS
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+header('Access-Control-Allow-Origin: '. getenv('ORIGIN_PATH'));
+header('Access-Control-Allow-Methods: GET, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
-
-// Set content type to JSON
+header('Access-Control-Allow-Credentials: true');
 header('Content-Type: application/json');
 
+// Handle preflight requests
+if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
+    http_response_code(200);
+    exit();
+}
+
+// Include necessary files
 require_once '../../classes/Database.php';
-require_once '../../classes/Objetivo.php';
-
-// Enable error reporting
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
-
-// Load database configuration
+require_once '../../utilities/check_permissions.php';
 $config = include '../../config/db_config.php';
 
+session_start();
+
 try {
-    // Create a new Database instance
-    $db = new Database($config['servername'], $config['username'], $config['password'], $config['dbname']);
-    $conn = $db->getConnection();
-    if (!$conn) {
-        throw new Exception('Failed to connect to the database');
+    // Retrieve id from the query string
+    if (!isset($_GET['id_curso'])) {
+        throw new Exception('Missing id parameter');
     }
 
-    // Get the curso ID from the query parameters
-    $id_curso = isset($_GET['id_curso']) ? intval($_GET['id_curso']) : 0;
-    if ($id_curso <= 0) {
-        throw new Exception('Invalid curso ID');
+    $id = intval($_GET['id_curso']);
+
+    // Check if user is authenticated
+    if (isset($_SESSION['username'])) {
+        $username = $_SESSION['username'];
+
+        // Create database connection
+        $db = new Database($config['servername'], $config['username'], $config['password'], $config['dbname']);
+        $conn = $db->getConnection();
+
+        if (userHasPermissionsInCurso($username, $id, $conn)) {
+            $sql = "
+            SELECT *
+            FROM objetivos
+            WHERE objetivos.id_curso = ?
+            ";
+
+            // Execute the query
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param('i', $id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+
+            if ($result->num_rows > 0) {
+                $general = [];
+                $especificos = [];
+                while ($row = $result->fetch_assoc()) {
+                    if ($row['tipo'] === 'general') {
+                        $general[] = $row;
+                    }
+                    if ($row['tipo'] === 'especifico') {
+                        $especificos[] = $row;
+                    }
+                }
+
+                echo json_encode(['general' => $general, 'especificos' => $especificos]);
+            } else {
+                echo json_encode(['general' => [], 'especificos' => []]);
+            }
+        } else {
+            throw new Exception('User is not allowed to see these objetivos');
+        }
+
+        $stmt->close();
+    } else {
+        // Return unauthorized or empty response if session username is not set
+        http_response_code(401);
+        echo json_encode(['error' => 'Unauthorized']);
     }
-
-    $objetivo = new Objetivo($db);
-
-    // Retrieve all objetivos for the given curso
-    $objetivos = $objetivo->selectAllWhereId('id_curso', $id_curso);
-
-    // Return the data as JSON
-    echo json_encode(['success' => true, 'objetivos' => $objetivos]);
 } catch (Exception $e) {
     // Handle any exceptions and return an error response
     http_response_code(500);
-    echo json_encode(['error' => 'An error occurred while processing your request.']);
-    error_log($e->getMessage());
+    echo json_encode(['error' => 'An error occurred: ' . $e->getMessage()]);
 }
+?>
